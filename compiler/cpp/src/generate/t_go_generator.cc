@@ -125,6 +125,7 @@ public:
     void generate_go_struct_definition(std::ofstream& out, t_struct* tstruct, bool is_xception = false, bool is_result = false, bool is_args = false);
     void generate_go_struct_initializer(std::ofstream& out, t_struct* tstruct, bool is_args_or_result = false);
     void generate_isset_helpers(std::ofstream& out, t_struct* tstruct, const string& tstruct_name, bool is_result = false);
+    void generate_countsetfields_helper(std::ofstream& out, t_struct* tstruct, const string& tstruct_name, bool is_result = false);
     void generate_go_struct_reader(std::ofstream& out, t_struct* tstruct, const string& tstruct_name, bool is_result = false);
     void generate_go_struct_writer(std::ofstream& out, t_struct* tstruct, const string& tstruct_name, bool is_result = false);
     void generate_go_function_helpers(t_function* tfunction);
@@ -266,6 +267,8 @@ private:
 
     std::string gen_package_prefix_;
     std::string gen_thrift_import_;
+
+    int num_setable = 0;
 
     /**
      * File streams
@@ -1142,6 +1145,9 @@ void t_go_generator::generate_go_struct_definition(ofstream& out,
         int sorted_keys_pos = 0;
 
         for (m_iter = sorted_members.begin(); m_iter != sorted_members.end(); ++m_iter) {
+            if( tstruct->is_union() ) {
+                (*m_iter)->set_req(t_field::T_OPTIONAL);
+            }
             if( sorted_keys_pos != (*m_iter)->get_key()) {
                 int first_unused = std::max(1,sorted_keys_pos++);
                 while( sorted_keys_pos != (*m_iter)->get_key()) {
@@ -1215,6 +1221,7 @@ void t_go_generator::generate_go_struct_definition(ofstream& out,
                 <<indent() << "  }" <<endl
                 <<indent() << "return "<<maybepointer <<"p." <<publicized_name <<endl
                 <<indent() << "}" <<endl;
+            num_setable += 1;
         } else {
             out <<endl
             	<<indent() << "func (p *" << tstruct_name << ") Get" << publicized_name << "() "<< goType<<" {" << endl
@@ -1222,6 +1229,10 @@ void t_go_generator::generate_go_struct_definition(ofstream& out,
                 <<indent() << "}" <<endl;
 
         }
+    }
+
+    if (tstruct->is_union() && num_setable > 0) {
+        generate_countsetfields_helper(out, tstruct, tstruct_name, is_result);
     }
 
     generate_isset_helpers(out, tstruct, tstruct_name, is_result);
@@ -1285,6 +1296,46 @@ void t_go_generator::generate_isset_helpers(ofstream& out,
                 indent() << "}" << endl << endl;
         }
     }
+}
+
+/**
+ * Generates the CountSetFields helper method for a struct
+ */
+void t_go_generator::generate_countsetfields_helper(ofstream& out,
+        t_struct* tstruct,
+        const string& tstruct_name,
+        bool is_result)
+{
+    (void)is_result;
+    const vector<t_field*>& fields = tstruct->get_members();
+    vector<t_field*>::const_iterator f_iter;
+    const string escaped_tstruct_name(escape_string(tstruct->get_name()));
+
+    out << indent() << "func (p *" << tstruct_name << ") CountSetFields" << tstruct_name
+        << "() int {"
+        << endl;
+    indent_up();
+    out << indent() << "count := 0" << endl;
+    for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
+        if ((*f_iter)->get_req() == t_field::T_REQUIRED)
+          continue;
+
+        if (!is_pointer_field(*f_iter))
+          continue;
+
+        const string field_name(
+            publicize(variable_name_to_go_name(escape_string((*f_iter)->get_name()))));
+
+        out << indent() << "if (p.IsSet" << field_name << "()) {" << endl;
+        indent_up();
+        out << indent() << "count += 1" << endl;
+        indent_down();
+        out << indent() << "}" << endl;
+    }
+
+    out << indent() << "return count" << endl << endl;
+    indent_down();
+    out << indent() << "}" << endl << endl;
 }
 
 /**
@@ -1427,6 +1478,11 @@ void t_go_generator::generate_go_struct_writer(ofstream& out,
     indent(out) <<
                 "func (p *" << tstruct_name << ") Write(oprot thrift.TProtocol) error {" << endl;
     indent_up();
+    if (tstruct->is_union() && num_setable > 0) {
+        out << indent() << "if c := p.CountSetFields" << name << "(); c != 1 {" << endl
+            << indent() << "  return fmt.Errorf(\"%T write union: exactly one field must be set (%d set).\", p, c)" << endl
+            << indent() << "}" << endl;
+    }
     out <<
         indent() << "if err := oprot.WriteStructBegin(\"" << name << "\"); err != nil {" << endl <<
         indent() << "  return fmt.Errorf(\"%T write struct begin error: %s\", p, err) }" << endl;
