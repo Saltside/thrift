@@ -20,9 +20,9 @@
 package common
 
 import (
-	"code.google.com/p/gomock/gomock"
 	"errors"
 	"gen/thrifttest"
+	"github.com/golang/mock/gomock"
 	"reflect"
 	"testing"
 	"thrift"
