@@ -34,6 +34,10 @@ module Thrift
     end
 
     def open
+      # Empty the read buffer when we open the transport to make sure that we
+      # don't have data in the buffer.
+      @rbuf = Bytes.empty_byte_buffer
+
       @transport.open
     end
 
