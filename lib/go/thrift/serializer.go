@@ -37,6 +37,14 @@ func NewTSerializer() *TSerializer {
 		transport,
 		protocol}
 }
+func NewTJsonSerializer() *TSerializer {
+	transport := NewTMemoryBufferLen(1024)
+	protocol := NewTJSONProtocolFactory().GetProtocol(transport)
+
+	return &TSerializer{
+		transport,
+		protocol}
+}
 
 func (t *TSerializer) WriteString(msg TStruct) (s string, err error) {
 	t.Transport.Reset()
