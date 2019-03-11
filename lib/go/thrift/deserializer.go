@@ -35,6 +35,17 @@ func NewTDeserializer() *TDeserializer {
 		protocol}
 }
 
+func NewTJsonDeserializer() *TDeserializer {
+	var transport TTransport
+	transport = NewTMemoryBufferLen(1024)
+
+	protocol := NewTJSONProtocolFactory().GetProtocol(transport)
+
+	return &TDeserializer{
+		transport,
+		protocol}
+}
+
 func (t *TDeserializer) ReadString(msg TStruct, s string) (err error) {
 	err = nil
 	if _, err = t.Transport.Write([]byte(s)); err != nil {
